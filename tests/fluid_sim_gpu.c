@@ -176,7 +176,8 @@ int main(void)
     puts("Zero-state GPU solver test passed.");
 
     CHECK(FluidSimClear(simulation) &&
-          FluidSimAddVelocitySource(simulation, 15.5f, 15.5f, 24.0f, -9.0f, 3.0f) &&
+          FluidSimAddVelocitySource(simulation, (Vector2){15.5f, 15.5f},
+                                   (Vector2){24.0f, -9.0f}, 3.0f) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount),
           "Could not apply and read the velocity-only source.");
@@ -219,22 +220,36 @@ int main(void)
     puts("Finite-value and wall-boundary tests passed.");
 
     CHECK(FluidSimClear(simulation) &&
-          FluidSimAddVelocitySource(simulation, 15.5f, 15.5f, 24.0f, 8.0f, 6.0f) &&
-          FluidSimAddDyeSource(simulation, 17.5f, 15.5f, 2.0f, 2.0f) &&
+          FluidSimAddVelocitySource(simulation, (Vector2){15.5f, 15.5f},
+                                   (Vector2){24.0f, 8.0f}, 6.0f) &&
+          FluidSimStep(simulation) &&
+          FluidSimAddDyeSource(simulation, (Vector2){17.5f, 15.5f}, 2.0f, 2.0f) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount),
-          "Could not prepare the dye-advection test.");
+          "Could not prepare the deferred dye-source test.");
+    CHECK(AllZero(dye, scalarCount),
+          "A dye source was applied before the dye-advection stage.");
     CHECK(FluidSimStep(simulation) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, pressure, scalarCount),
-          "Could not advance and read the dye-advection test.");
-    CHECK(FieldDifference(dye, pressure, scalarCount) > 0.001,
-          "The velocity field did not carry dye during the simulation step.");
+          "Could not advance and read the deferred dye-source test.");
+    CHECK(AnyNonzero(pressure, scalarCount),
+          "A queued dye source was not applied during the simulation step.");
+    CHECK(FluidSimStep(simulation) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount),
+          "Could not advance and read the dye-advection result.");
+    CHECK(FieldDifference(pressure, dye, scalarCount) > 0.001,
+          "The velocity field did not continue to carry dye.");
     puts("Dye advection test passed.");
 
     CHECK(FluidSimClear(simulation) &&
-          FluidSimAddDyeSource(simulation, 15.5f, 15.5f, 2.0f, 3.0f) &&
+          FluidSimAddDyeSource(simulation, (Vector2){15.5f, 15.5f}, 2.0f, 3.0f) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount),
           "Could not apply and read the dye-only source.");
+    CHECK(AllZero(dye, scalarCount), "A queued dye source changed the field before the solver step.");
+    CHECK(FluidSimStep(simulation) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount),
+          "Could not advance and read the dye-only source.");
     CHECK(AnyNonzero(dye, scalarCount), "A dye source did not change the dye field.");
     CHECK(AllZero(velocity, velocityCount), "A dye source unexpectedly changed the velocity field.");
     puts("Dye source isolation test passed.");
