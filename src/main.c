@@ -1,5 +1,4 @@
 #include "fluid_sim.h"
-#include "mouse_mapping.h"
 #include "rlgl.h"
 
 #include <stdio.h>
@@ -41,6 +40,20 @@ static bool GetSimulationRectangle(int screenWidth, int screenHeight, Rectangle 
     rectangle->y = ((float)screenHeight - side)*0.5f;
     rectangle->width = side;
     rectangle->height = side;
+    return true;
+}
+
+static bool MapMouseToGrid(Vector2 mouse, Rectangle rectangle, float gridWidth, float gridHeight,
+                           Vector2 *grid)
+{
+    if ((grid == NULL) || (mouse.x < rectangle.x) ||
+        (mouse.x >= rectangle.x + rectangle.width) ||
+        (mouse.y < rectangle.y) || (mouse.y >= rectangle.y + rectangle.height))
+    {
+        return false;
+    }
+    grid->x = (mouse.x - rectangle.x)*gridWidth/rectangle.width;
+    grid->y = (rectangle.y + rectangle.height - mouse.y)*gridHeight/rectangle.height;
     return true;
 }
 

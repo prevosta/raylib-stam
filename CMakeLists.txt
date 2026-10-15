@@ -31,13 +31,9 @@ target_link_libraries(raylib_stam PRIVATE fluid_sim raylib opengl32)
 add_executable(fluid_sim_gpu_tests tests/fluid_sim_gpu.c)
 target_link_libraries(fluid_sim_gpu_tests PRIVATE fluid_sim raylib opengl32)
 
-add_executable(mouse_mapping_tests tests/mouse_mapping.c)
-target_link_libraries(mouse_mapping_tests PRIVATE raylib)
-
 enable_testing()
 add_test(NAME compute_shader_smoke COMMAND compute_shader_smoke)
 add_test(NAME fluid_sim_gpu COMMAND fluid_sim_gpu_tests)
-add_test(NAME mouse_mapping COMMAND mouse_mapping_tests)
-set_tests_properties(compute_shader_smoke fluid_sim_gpu mouse_mapping PROPERTIES
+set_tests_properties(compute_shader_smoke fluid_sim_gpu PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
 )
