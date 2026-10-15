@@ -185,12 +185,12 @@ int main(void)
     const double divergenceBefore = MeasureDivergence(velocity, width, height);
     puts("Velocity source isolation test passed.");
 
-    CHECK(FluidSimStep(simulation) &&
+    CHECK(FluidSimProjectVelocity(simulation) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_PRESSURE, pressure, scalarCount) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_DIVERGENCE, divergence, scalarCount),
-          "Could not step and read the sourced simulation.");
+          "Could not project and read the sourced velocity field.");
     CHECK(AllFinite(velocity, velocityCount) && AllFinite(dye, scalarCount) &&
           AllFinite(pressure, scalarCount) && AllFinite(divergence, scalarCount),
           "A solver field contains a non-finite value.");
@@ -203,7 +203,20 @@ int main(void)
                 divergenceBefore, divergenceAfter);
         goto cleanup;
     }
-    puts("Finite-value, wall-boundary, and divergence-reduction tests passed.");
+    puts("Pressure-projection divergence-reduction test passed.");
+
+    CHECK(FluidSimStep(simulation) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_PRESSURE, pressure, scalarCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_DIVERGENCE, divergence, scalarCount),
+          "Could not step and read the sourced simulation.");
+    CHECK(AllFinite(velocity, velocityCount) && AllFinite(dye, scalarCount) &&
+          AllFinite(pressure, scalarCount) && AllFinite(divergence, scalarCount),
+          "A solver field contains a non-finite value.");
+    CHECK(HasClosedBoxVelocityBoundaries(velocity, width, height),
+          "The velocity field does not satisfy the closed-box wall convention.");
+    puts("Finite-value and wall-boundary tests passed.");
 
     CHECK(FluidSimClear(simulation) &&
           FluidSimAddVelocitySource(simulation, 15.5f, 15.5f, 24.0f, 8.0f, 6.0f) &&

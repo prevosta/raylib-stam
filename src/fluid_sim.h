@@ -29,6 +29,8 @@ FluidSim *FluidSimCreate(const FluidSimConfig *config, char *errorMessage, size_
 void FluidSimDestroy(FluidSim *simulation);
 bool FluidSimClear(FluidSim *simulation);
 bool FluidSimStep(FluidSim *simulation);
+/* Projects the current velocity field without advancing the remaining simulation stages. */
+bool FluidSimProjectVelocity(FluidSim *simulation);
 /* Positions and radii use active-cell coordinates; velocity is measured in grid cells per second. */
 bool FluidSimAddVelocitySource(FluidSim *simulation, float x, float y, float velocityX, float velocityY,
                                float radius);

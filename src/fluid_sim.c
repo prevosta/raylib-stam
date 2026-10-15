@@ -686,6 +686,11 @@ bool FluidSimStep(FluidSim *simulation)
     return Colorize(simulation);
 }
 
+bool FluidSimProjectVelocity(FluidSim *simulation)
+{
+    return (simulation != NULL) && ProjectVelocity(simulation);
+}
+
 bool FluidSimAddVelocitySource(FluidSim *simulation, float x, float y, float velocityX, float velocityY,
                                float radius)
 {
