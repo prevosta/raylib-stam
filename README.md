@@ -38,6 +38,8 @@ target was not selected. The application shows its current FPS; the target is
 at least 60 FPS for the complete rendered 1024 x 1024 solver on an RTX A2000.
 It also logs five-second full-frame FPS averages. A reported renderer or a
 60 FPS cap alone is not performance validation.
+The solver advances once per rendered frame at a fixed 1/60-second step, and
+pause freezes field evolution without stopping rendering.
 
 ## Checks
 
@@ -45,8 +47,9 @@ It also logs five-second full-frame FPS averages. A reported renderer or a
   deterministic shader-buffer readback.
 - `fluid_sim_gpu` exercises the public simulation interface on a small
   deterministic GPU grid, checking zero-state stability, isolated sources,
-  finite fields, closed-box velocity boundaries, pressure-projection
-  divergence reduction, dye advection, and clearing.
+  active-cell source bounds, finite fields, free-slip velocity and no-flux dye
+  boundaries, pressure-projection divergence reduction, zero-diffusivity dye,
+  dye advection, and clearing every simulation field.
 
 The solver tests use the actual compute shaders with limited field readback;
 they do not include a CPU solver reference. Full-resolution performance still

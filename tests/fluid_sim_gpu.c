@@ -114,6 +114,34 @@ static bool HasClosedBoxVelocityBoundaries(const float *velocity, unsigned int w
     return true;
 }
 
+static bool HasNoFluxDyeBoundaries(const float *dye, unsigned int width, unsigned int height)
+{
+    const unsigned int allocatedWidth = width + 2;
+    for (unsigned int y = 1; y <= height; y++)
+    {
+        const size_t leftGhost = (size_t)y*allocatedWidth;
+        const size_t rightGhost = (size_t)y*allocatedWidth + width + 1;
+        if ((dye[leftGhost] != dye[leftGhost + 1]) ||
+            (dye[rightGhost] != dye[rightGhost - 1]))
+        {
+            return false;
+        }
+    }
+
+    for (unsigned int x = 1; x <= width; x++)
+    {
+        const size_t topGhost = x;
+        const size_t topCell = allocatedWidth + x;
+        const size_t bottomCell = (size_t)height*allocatedWidth + x;
+        const size_t bottomGhost = (size_t)(height + 1)*allocatedWidth + x;
+        if ((dye[topGhost] != dye[topCell]) || (dye[bottomGhost] != dye[bottomCell]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 int main(void)
 {
     const unsigned int width = 32;
@@ -175,6 +203,18 @@ int main(void)
     CHECK(AllZero(dye, scalarCount), "An unforced zero dye field drifted.");
     puts("Zero-state GPU solver test passed.");
 
+    CHECK(!FluidSimAddVelocitySource(simulation, (Vector2){-0.01f, 15.5f},
+                                     (Vector2){24.0f, -9.0f}, 3.0f) &&
+          !FluidSimAddVelocitySource(simulation, (Vector2){(float)width, 15.5f},
+                                     (Vector2){24.0f, -9.0f}, 3.0f) &&
+          !FluidSimAddDyeSource(simulation, (Vector2){15.5f, (float)height}, 2.0f, 3.0f) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount),
+          "A source outside the active simulation grid was accepted.");
+    CHECK(AllZero(velocity, velocityCount) && AllZero(dye, scalarCount),
+          "An out-of-grid source changed a simulation field.");
+    puts("Active-cell source bounds test passed.");
+
     CHECK(FluidSimClear(simulation) &&
           FluidSimAddVelocitySource(simulation, (Vector2){15.5f, 15.5f},
                                    (Vector2){24.0f, -9.0f}, 3.0f) &&
@@ -205,6 +245,27 @@ int main(void)
         goto cleanup;
     }
     puts("Pressure-projection divergence-reduction test passed.");
+
+    CHECK(FluidSimAddDyeSource(simulation, (Vector2){15.5f, 15.5f}, 2.0f, 3.0f) &&
+          FluidSimStep(simulation) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_PRESSURE, pressure, scalarCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_DIVERGENCE, divergence, scalarCount),
+          "Could not prepare nonzero values in every simulation field before clear.");
+    CHECK(AnyNonzero(velocity, velocityCount) && AnyNonzero(dye, scalarCount) &&
+          AnyNonzero(pressure, scalarCount) && AnyNonzero(divergence, scalarCount),
+          "Could not populate every simulation field before clear.");
+    CHECK(FluidSimClear(simulation) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_PRESSURE, pressure, scalarCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_DIVERGENCE, divergence, scalarCount),
+          "Could not clear all previously active simulation fields.");
+    CHECK(AllZero(velocity, velocityCount) && AllZero(dye, scalarCount) &&
+          AllZero(pressure, scalarCount) && AllZero(divergence, scalarCount),
+          "Clear did not reset every simulation field.");
+    puts("GPU clear-all-fields test passed.");
 
     CHECK(FluidSimStep(simulation) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
@@ -252,14 +313,26 @@ int main(void)
           "Could not advance and read the dye-only source.");
     CHECK(AnyNonzero(dye, scalarCount), "A dye source did not change the dye field.");
     CHECK(AllZero(velocity, velocityCount), "A dye source unexpectedly changed the velocity field.");
+    CHECK(HasNoFluxDyeBoundaries(dye, width, height),
+          "The dye field does not satisfy the no-flux wall behavior.");
     puts("Dye source isolation test passed.");
+
+    CHECK(FluidSimStep(simulation) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, pressure, scalarCount),
+          "Could not advance and read the zero-diffusivity dye field.");
+    CHECK(FieldDifference(dye, pressure, scalarCount) == 0.0,
+          "Dye diffusion changed the field despite zero diffusivity.");
+    puts("Zero-diffusivity dye stage test passed.");
 
     CHECK(FluidSimClear(simulation) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
-          FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount),
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_PRESSURE, pressure, scalarCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_DIVERGENCE, divergence, scalarCount),
           "Could not clear and read the simulation fields.");
-    CHECK(AllZero(velocity, velocityCount) && AllZero(dye, scalarCount),
-          "Clear did not reset the velocity and dye fields.");
+    CHECK(AllZero(velocity, velocityCount) && AllZero(dye, scalarCount) &&
+          AllZero(pressure, scalarCount) && AllZero(divergence, scalarCount),
+          "Clear did not reset every simulation field.");
     puts("GPU clear test passed.");
     exitCode = 0;
 
