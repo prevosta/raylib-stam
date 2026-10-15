@@ -16,6 +16,10 @@ static bool MapMouseToGrid(Vector2 mouse, Rectangle rectangle, float gridWidth, 
     }
     grid->x = (mouse.x - rectangle.x)*gridWidth/rectangle.width;
     grid->y = (rectangle.y + rectangle.height - mouse.y)*gridHeight/rectangle.height;
+    if (grid->y >= gridHeight)
+    {
+        grid->y = gridHeight - 1.0f;
+    }
     return true;
 }
 
