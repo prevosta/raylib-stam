@@ -22,14 +22,17 @@ void main()
     if ((p.x >= width + 2) || (p.y >= height + 2)) return;
 
     int index = p.y*(width + 2) + p.x;
-    destinationDye[index] = sourceDye[index];
-    if ((p.x < 1) || (p.x > width) || (p.y < 1) || (p.y > height)) return;
-
-    vec2 offset = vec2(p - ivec2(1)) - sourcePosition;
-    float radiusSquared = sourceRadius*sourceRadius;
-    float distanceSquared = dot(offset, offset);
-    if (distanceSquared > 9.0*radiusSquared) return;
-
-    float weight = exp(-distanceSquared/(0.5*radiusSquared));
-    destinationDye[index] += sourceAmount*weight;
+    float dye = sourceDye[index];
+    if ((p.x >= 1) && (p.x <= width) && (p.y >= 1) && (p.y <= height))
+    {
+        vec2 offset = vec2(p - ivec2(1)) - sourcePosition;
+        float radiusSquared = sourceRadius*sourceRadius;
+        float distanceSquared = dot(offset, offset);
+        if (distanceSquared <= 9.0*radiusSquared)
+        {
+            float weight = exp(-distanceSquared/(0.5*radiusSquared));
+            dye += sourceAmount*weight;
+        }
+    }
+    destinationDye[index] = dye;
 }

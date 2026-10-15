@@ -16,6 +16,10 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(raylib)
 
 configure_file(shaders/compute_smoke.comp compute_smoke.comp COPYONLY)
+file(GLOB FLUID_SHADER_FILES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/fluid/*.comp"
+)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${FLUID_SHADER_FILES})
 file(COPY shaders/fluid DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/shaders")
 
 add_executable(compute_shader_smoke tests/compute_shader_smoke.c)
