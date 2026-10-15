@@ -68,6 +68,13 @@ typedef struct FluidProgram
     int uniforms[UNIFORM_COUNT];
 } FluidProgram;
 
+typedef struct PendingDyeSource
+{
+    Vector2 position;
+    float amount;
+    float radius;
+} PendingDyeSource;
+
 struct FluidSim
 {
     unsigned int width;
@@ -88,6 +95,9 @@ struct FluidSim
     FluidProgram programs[PROGRAM_COUNT];
     GlMemoryBarrierFunction memoryBarrier;
     GlBindImageTextureFunction bindImageTexture;
+    PendingDyeSource *pendingDyeSources;
+    size_t pendingDyeSourceCount;
+    size_t pendingDyeSourceCapacity;
 };
 
 static const char *const FLUID_UNIFORM_NAMES[UNIFORM_COUNT] = {
@@ -291,48 +301,36 @@ static bool AllocateResources(FluidSim *simulation, char *errorMessage, size_t e
     return true;
 }
 
-static void ClearVelocityBuffer(FluidSim *simulation, unsigned int buffer)
+static void DispatchSingleBufferPass(FluidSim *simulation, FluidProgramId programId,
+                                     unsigned int buffer)
 {
-    const FluidProgram *program = &simulation->programs[PROGRAM_CLEAR_VELOCITY];
+    const FluidProgram *program = &simulation->programs[programId];
     rlEnableShader(program->id);
     rlBindShaderBuffer(buffer, 0);
     SetGridUniforms(simulation, program);
     DispatchGrid(simulation, program);
     rlDisableShader();
     StorageBarrier(simulation);
+}
+
+static void ClearVelocityBuffer(FluidSim *simulation, unsigned int buffer)
+{
+    DispatchSingleBufferPass(simulation, PROGRAM_CLEAR_VELOCITY, buffer);
 }
 
 static void ClearScalarBuffer(FluidSim *simulation, unsigned int buffer)
 {
-    const FluidProgram *program = &simulation->programs[PROGRAM_CLEAR_SCALAR];
-    rlEnableShader(program->id);
-    rlBindShaderBuffer(buffer, 0);
-    SetGridUniforms(simulation, program);
-    DispatchGrid(simulation, program);
-    rlDisableShader();
-    StorageBarrier(simulation);
+    DispatchSingleBufferPass(simulation, PROGRAM_CLEAR_SCALAR, buffer);
 }
 
 static void ApplyVelocityBoundary(FluidSim *simulation, unsigned int buffer)
 {
-    const FluidProgram *program = &simulation->programs[PROGRAM_BOUNDARY_VELOCITY];
-    rlEnableShader(program->id);
-    rlBindShaderBuffer(buffer, 0);
-    SetGridUniforms(simulation, program);
-    DispatchGrid(simulation, program);
-    rlDisableShader();
-    StorageBarrier(simulation);
+    DispatchSingleBufferPass(simulation, PROGRAM_BOUNDARY_VELOCITY, buffer);
 }
 
 static void ApplyScalarBoundary(FluidSim *simulation, unsigned int buffer)
 {
-    const FluidProgram *program = &simulation->programs[PROGRAM_BOUNDARY_SCALAR];
-    rlEnableShader(program->id);
-    rlBindShaderBuffer(buffer, 0);
-    SetGridUniforms(simulation, program);
-    DispatchGrid(simulation, program);
-    rlDisableShader();
-    StorageBarrier(simulation);
+    DispatchSingleBufferPass(simulation, PROGRAM_BOUNDARY_SCALAR, buffer);
 }
 
 static void CopyVelocity(FluidSim *simulation, unsigned int source, unsigned int destination)
@@ -347,36 +345,54 @@ static void CopyVelocity(FluidSim *simulation, unsigned int source, unsigned int
     StorageBarrier(simulation);
 }
 
-static bool AddVelocitySource(FluidSim *simulation, float x, float y, float velocityX, float velocityY,
-                              float radius)
+static bool AddVelocitySource(FluidSim *simulation, Vector2 position, Vector2 velocity, float radius)
 {
     const FluidProgram *program = &simulation->programs[PROGRAM_SOURCE_VELOCITY];
+    const int write = 1 - simulation->velocityRead;
     rlEnableShader(program->id);
     rlBindShaderBuffer(simulation->velocity[simulation->velocityRead], 0);
+    rlBindShaderBuffer(simulation->velocity[write], 1);
     SetGridUniforms(simulation, program);
-    SetVec2Uniform(program, UNIFORM_SOURCE_POSITION, x, y);
-    SetVec2Uniform(program, UNIFORM_SOURCE_VELOCITY, velocityX, velocityY);
+    SetVec2Uniform(program, UNIFORM_SOURCE_POSITION, position.x, position.y);
+    SetVec2Uniform(program, UNIFORM_SOURCE_VELOCITY, velocity.x, velocity.y);
     SetFloatUniform(program, UNIFORM_SOURCE_RADIUS, radius);
     DispatchGrid(simulation, program);
     rlDisableShader();
     StorageBarrier(simulation);
-    ApplyVelocityBoundary(simulation, simulation->velocity[simulation->velocityRead]);
+    simulation->velocityRead = write;
+    ApplyVelocityBoundary(simulation, simulation->velocity[write]);
     return true;
 }
 
-static bool AddDyeSource(FluidSim *simulation, float x, float y, float amount, float radius)
+static bool DispatchDyeSource(FluidSim *simulation, const PendingDyeSource *source)
 {
     const FluidProgram *program = &simulation->programs[PROGRAM_SOURCE_DYE];
+    const int write = 1 - simulation->dyeRead;
     rlEnableShader(program->id);
     rlBindShaderBuffer(simulation->dye[simulation->dyeRead], 0);
+    rlBindShaderBuffer(simulation->dye[write], 1);
     SetGridUniforms(simulation, program);
-    SetVec2Uniform(program, UNIFORM_SOURCE_POSITION, x, y);
-    SetFloatUniform(program, UNIFORM_SOURCE_AMOUNT, amount);
-    SetFloatUniform(program, UNIFORM_SOURCE_RADIUS, radius);
+    SetVec2Uniform(program, UNIFORM_SOURCE_POSITION, source->position.x, source->position.y);
+    SetFloatUniform(program, UNIFORM_SOURCE_AMOUNT, source->amount);
+    SetFloatUniform(program, UNIFORM_SOURCE_RADIUS, source->radius);
     DispatchGrid(simulation, program);
     rlDisableShader();
     StorageBarrier(simulation);
-    ApplyScalarBoundary(simulation, simulation->dye[simulation->dyeRead]);
+    simulation->dyeRead = write;
+    ApplyScalarBoundary(simulation, simulation->dye[write]);
+    return true;
+}
+
+static bool ApplyPendingDyeSources(FluidSim *simulation)
+{
+    for (size_t i = 0; i < simulation->pendingDyeSourceCount; i++)
+    {
+        if (!DispatchDyeSource(simulation, &simulation->pendingDyeSources[i]))
+        {
+            return false;
+        }
+    }
+    simulation->pendingDyeSourceCount = 0;
     return true;
 }
 
@@ -518,23 +534,6 @@ static bool Colorize(FluidSim *simulation)
     return true;
 }
 
-static unsigned int GetFieldBuffer(const FluidSim *simulation, FluidSimField field)
-{
-    switch (field)
-    {
-        case FLUID_SIM_FIELD_VELOCITY:
-            return simulation->velocity[simulation->velocityRead];
-        case FLUID_SIM_FIELD_DYE:
-            return simulation->dye[simulation->dyeRead];
-        case FLUID_SIM_FIELD_PRESSURE:
-            return simulation->pressure[simulation->pressureRead];
-        case FLUID_SIM_FIELD_DIVERGENCE:
-            return simulation->divergence;
-        default:
-            return 0;
-    }
-}
-
 FluidSim *FluidSimCreate(const FluidSimConfig *config, char *errorMessage, size_t errorMessageSize)
 {
     if ((errorMessage != NULL) && (errorMessageSize > 0))
@@ -645,6 +644,7 @@ void FluidSimDestroy(FluidSim *simulation)
             rlUnloadShaderProgram(simulation->programs[i].id);
         }
     }
+    free(simulation->pendingDyeSources);
     free(simulation);
 }
 
@@ -667,6 +667,7 @@ bool FluidSimClear(FluidSim *simulation)
     simulation->velocityRead = 0;
     simulation->dyeRead = 0;
     simulation->pressureRead = 0;
+    simulation->pendingDyeSourceCount = 0;
     return Colorize(simulation);
 }
 
@@ -678,8 +679,8 @@ bool FluidSimStep(FluidSim *simulation)
     }
     ApplyVelocityBoundary(simulation, simulation->velocity[simulation->velocityRead]);
     if (!DiffuseVelocity(simulation) || !ProjectVelocity(simulation) ||
-        !AdvectVelocity(simulation) || !ProjectVelocity(simulation) || !DiffuseDye(simulation) ||
-        !AdvectDye(simulation))
+        !AdvectVelocity(simulation) || !ProjectVelocity(simulation) ||
+        !ApplyPendingDyeSources(simulation) || !DiffuseDye(simulation) || !AdvectDye(simulation))
     {
         return false;
     }
@@ -691,45 +692,100 @@ bool FluidSimProjectVelocity(FluidSim *simulation)
     return (simulation != NULL) && ProjectVelocity(simulation);
 }
 
-bool FluidSimAddVelocitySource(FluidSim *simulation, float x, float y, float velocityX, float velocityY,
-                               float radius)
+bool FluidSimAddVelocitySource(FluidSim *simulation, Vector2 position, Vector2 velocity, float radius)
 {
-    if ((simulation == NULL) || !isfinite(x) || !isfinite(y) || !isfinite(velocityX) ||
-        !isfinite(velocityY) || !isfinite(radius) || (x < 0.0f) || (y < 0.0f) ||
-        (x >= (float)simulation->width) || (y >= (float)simulation->height) || (radius <= 0.0f))
+    if ((simulation == NULL) || !isfinite(position.x) || !isfinite(position.y) ||
+        !isfinite(velocity.x) || !isfinite(velocity.y) || !isfinite(radius) ||
+        (position.x < 0.0f) || (position.y < 0.0f) ||
+        (position.x >= (float)simulation->width) ||
+        (position.y >= (float)simulation->height) || (radius <= 0.0f))
     {
         return false;
     }
-    return AddVelocitySource(simulation, x, y, velocityX, velocityY, radius);
+    return AddVelocitySource(simulation, position, velocity, radius);
 }
 
-bool FluidSimAddDyeSource(FluidSim *simulation, float x, float y, float amount, float radius)
+bool FluidSimAddDyeSource(FluidSim *simulation, Vector2 position, float amount, float radius)
 {
-    if ((simulation == NULL) || !isfinite(x) || !isfinite(y) || !isfinite(amount) ||
-        !isfinite(radius) || (x < 0.0f) || (y < 0.0f) || (x >= (float)simulation->width) ||
-        (y >= (float)simulation->height) || (amount < 0.0f) || (radius <= 0.0f))
+    if ((simulation == NULL) || !isfinite(position.x) || !isfinite(position.y) ||
+        !isfinite(amount) || !isfinite(radius) || (position.x < 0.0f) ||
+        (position.y < 0.0f) || (position.x >= (float)simulation->width) ||
+        (position.y >= (float)simulation->height) || (amount < 0.0f) || (radius <= 0.0f))
     {
         return false;
     }
-    return AddDyeSource(simulation, x, y, amount, radius);
+    if (simulation->pendingDyeSourceCount == simulation->pendingDyeSourceCapacity)
+    {
+        size_t nextCapacity = (simulation->pendingDyeSourceCapacity == 0)
+                                  ? 16
+                                  : simulation->pendingDyeSourceCapacity*2;
+        if ((nextCapacity < simulation->pendingDyeSourceCapacity) ||
+            (nextCapacity > SIZE_MAX/sizeof(*simulation->pendingDyeSources)))
+        {
+            return false;
+        }
+        PendingDyeSource *sources =
+            realloc(simulation->pendingDyeSources, nextCapacity*sizeof(*sources));
+        if (sources == NULL)
+        {
+            return false;
+        }
+        simulation->pendingDyeSources = sources;
+        simulation->pendingDyeSourceCapacity = nextCapacity;
+    }
+    simulation->pendingDyeSources[simulation->pendingDyeSourceCount++] =
+        (PendingDyeSource){position, amount, radius};
+    return true;
+}
+
+static bool GetFieldInfo(const FluidSim *simulation, FluidSimField field, unsigned int *buffer,
+                         size_t *elementCount)
+{
+    if (simulation == NULL)
+    {
+        return false;
+    }
+
+    unsigned int fieldBuffer = 0;
+    size_t fieldElementCount = 0;
+    switch (field)
+    {
+        case FLUID_SIM_FIELD_VELOCITY:
+            fieldBuffer = simulation->velocity[simulation->velocityRead];
+            fieldElementCount = simulation->cellCount*2;
+            break;
+        case FLUID_SIM_FIELD_DYE:
+            fieldBuffer = simulation->dye[simulation->dyeRead];
+            fieldElementCount = simulation->cellCount;
+            break;
+        case FLUID_SIM_FIELD_PRESSURE:
+            fieldBuffer = simulation->pressure[simulation->pressureRead];
+            fieldElementCount = simulation->cellCount;
+            break;
+        case FLUID_SIM_FIELD_DIVERGENCE:
+            fieldBuffer = simulation->divergence;
+            fieldElementCount = simulation->cellCount;
+            break;
+        default:
+            return false;
+    }
+
+    if (buffer != NULL)
+    {
+        *buffer = fieldBuffer;
+    }
+    if (elementCount != NULL)
+    {
+        *elementCount = fieldElementCount;
+    }
+    return true;
 }
 
 size_t FluidSimFieldElementCount(const FluidSim *simulation, FluidSimField field)
 {
-    if (simulation == NULL)
-    {
-        return 0;
-    }
-    if (field == FLUID_SIM_FIELD_VELOCITY)
-    {
-        return simulation->cellCount * 2;
-    }
-    if ((field == FLUID_SIM_FIELD_DYE) || (field == FLUID_SIM_FIELD_PRESSURE) ||
-        (field == FLUID_SIM_FIELD_DIVERGENCE))
-    {
-        return simulation->cellCount;
-    }
-    return 0;
+    size_t elementCount = 0;
+    (void)GetFieldInfo(simulation, field, NULL, &elementCount);
+    return elementCount;
 }
 
 bool FluidSimReadField(FluidSim *simulation, FluidSimField field, float *values, size_t elementCount)
@@ -738,9 +794,10 @@ bool FluidSimReadField(FluidSim *simulation, FluidSimField field, float *values,
     {
         return false;
     }
-    const size_t expectedCount = FluidSimFieldElementCount(simulation, field);
-    const unsigned int buffer = GetFieldBuffer(simulation, field);
-    if ((values == NULL) || (buffer == 0) || (expectedCount == 0) ||
+    size_t expectedCount = 0;
+    unsigned int buffer = 0;
+    if (!GetFieldInfo(simulation, field, &buffer, &expectedCount) ||
+        (values == NULL) || (buffer == 0) || (expectedCount == 0) ||
         (elementCount != expectedCount) || (elementCount > (size_t)INT_MAX / sizeof(float)))
     {
         return false;

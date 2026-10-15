@@ -1,9 +1,13 @@
 #version 430
 
 layout(local_size_x = 16, local_size_y = 16) in;
-layout(std430, binding = 0) buffer DyeField
+layout(std430, binding = 0) readonly buffer DyeSource
 {
-    float dye[];
+    float sourceDye[];
+};
+layout(std430, binding = 1) writeonly buffer DyeDestination
+{
+    float destinationDye[];
 };
 
 uniform int width;
@@ -15,6 +19,10 @@ uniform float sourceRadius;
 void main()
 {
     ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if ((p.x >= width + 2) || (p.y >= height + 2)) return;
+
+    int index = p.y*(width + 2) + p.x;
+    destinationDye[index] = sourceDye[index];
     if ((p.x < 1) || (p.x > width) || (p.y < 1) || (p.y > height)) return;
 
     vec2 offset = vec2(p - ivec2(1)) - sourcePosition;
@@ -23,6 +31,5 @@ void main()
     if (distanceSquared > 9.0*radiusSquared) return;
 
     float weight = exp(-distanceSquared/(0.5*radiusSquared));
-    int index = p.y*(width + 2) + p.x;
-    dye[index] += sourceAmount*weight;
+    destinationDye[index] += sourceAmount*weight;
 }

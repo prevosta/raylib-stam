@@ -146,14 +146,13 @@ int main(void)
             {
                 if (hasPreviousMouse)
                 {
-                    const float velocityX = (mouse.x - previousMouse.x)*
-                                            (float)SIMULATION_SIZE/simulationRectangle.width*
-                                            (float)TARGET_FRAME_RATE*VELOCITY_SOURCE_GAIN;
-                    const float velocityY = (mouse.y - previousMouse.y)*
-                                            (float)SIMULATION_SIZE/simulationRectangle.height*
-                                            (float)TARGET_FRAME_RATE*VELOCITY_SOURCE_GAIN;
-                    if (!FluidSimAddVelocitySource(simulation, gridPosition.x, gridPosition.y,
-                                                   velocityX, velocityY, BRUSH_RADIUS))
+                    const Vector2 velocity = {
+                        (mouse.x - previousMouse.x)*(float)SIMULATION_SIZE/
+                            simulationRectangle.width*(float)TARGET_FRAME_RATE*VELOCITY_SOURCE_GAIN,
+                        (previousMouse.y - mouse.y)*(float)SIMULATION_SIZE/
+                            simulationRectangle.height*(float)TARGET_FRAME_RATE*VELOCITY_SOURCE_GAIN
+                    };
+                    if (!FluidSimAddVelocitySource(simulation, gridPosition, velocity, BRUSH_RADIUS))
                     {
                         TraceLog(LOG_ERROR, "Could not apply the velocity source.");
                         goto cleanup;
@@ -162,8 +161,7 @@ int main(void)
                 hasPreviousMouse = true;
             }
             if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) &&
-                !FluidSimAddDyeSource(simulation, gridPosition.x, gridPosition.y,
-                                      DYE_SOURCE_AMOUNT, BRUSH_RADIUS))
+                !FluidSimAddDyeSource(simulation, gridPosition, DYE_SOURCE_AMOUNT, BRUSH_RADIUS))
             {
                 TraceLog(LOG_ERROR, "Could not apply the dye source.");
                 goto cleanup;

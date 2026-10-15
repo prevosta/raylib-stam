@@ -32,9 +32,9 @@ bool FluidSimStep(FluidSim *simulation);
 /* Projects the current velocity field without advancing the remaining simulation stages. */
 bool FluidSimProjectVelocity(FluidSim *simulation);
 /* Positions and radii use active-cell coordinates; velocity is measured in grid cells per second. */
-bool FluidSimAddVelocitySource(FluidSim *simulation, float x, float y, float velocityX, float velocityY,
-                               float radius);
-bool FluidSimAddDyeSource(FluidSim *simulation, float x, float y, float amount, float radius);
+bool FluidSimAddVelocitySource(FluidSim *simulation, Vector2 position, Vector2 velocity, float radius);
+/* Dye sources are queued for the dye stage of the next simulation step. */
+bool FluidSimAddDyeSource(FluidSim *simulation, Vector2 position, float amount, float radius);
 size_t FluidSimFieldElementCount(const FluidSim *simulation, FluidSimField field);
 /* Diagnostic readback is row-major and includes the one-cell ghost border. */
 bool FluidSimReadField(FluidSim *simulation, FluidSimField field, float *values, size_t elementCount);
