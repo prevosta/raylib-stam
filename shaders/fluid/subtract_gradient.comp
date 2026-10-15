@@ -1,0 +1,41 @@
+#version 430
+
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(std430, binding = 0) readonly buffer VelocitySource
+{
+    vec2 sourceVelocity[];
+};
+layout(std430, binding = 1) readonly buffer PressureField
+{
+    float pressure[];
+};
+layout(std430, binding = 2) writeonly buffer VelocityDestination
+{
+    vec2 destinationVelocity[];
+};
+
+uniform int width;
+uniform int height;
+
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if ((p.x >= width + 2) || (p.y >= height + 2)) return;
+
+    int index = p.y*(width + 2) + p.x;
+    bool ghostX = (p.x == 0) || (p.x == width + 1);
+    bool ghostY = (p.y == 0) || (p.y == height + 1);
+    if (ghostX || ghostY)
+    {
+        ivec2 nearest = clamp(p, ivec2(1), ivec2(width, height));
+        vec2 value = sourceVelocity[nearest.y*(width + 2) + nearest.x];
+        if (ghostX) value.x = -value.x;
+        if (ghostY) value.y = -value.y;
+        destinationVelocity[index] = value;
+        return;
+    }
+
+    float gradientX = 0.5*(pressure[index + 1] - pressure[index - 1]);
+    float gradientY = 0.5*(pressure[index + width + 2] - pressure[index - width - 2]);
+    destinationVelocity[index] = sourceVelocity[index] - vec2(gradientX, gradientY);
+}

@@ -1,0 +1,36 @@
+#version 430
+
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(std430, binding = 0) readonly buffer PressureSource
+{
+    float source[];
+};
+layout(std430, binding = 1) writeonly buffer PressureDestination
+{
+    float destination[];
+};
+layout(std430, binding = 2) readonly buffer DivergenceField
+{
+    float divergence[];
+};
+
+uniform int width;
+uniform int height;
+
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if ((p.x >= width + 2) || (p.y >= height + 2)) return;
+
+    int index = p.y*(width + 2) + p.x;
+    if ((p.x == 0) || (p.x == width + 1) || (p.y == 0) || (p.y == height + 1))
+    {
+        ivec2 nearest = clamp(p, ivec2(1), ivec2(width, height));
+        destination[index] = source[nearest.y*(width + 2) + nearest.x];
+        return;
+    }
+
+    destination[index] = (source[index - 1] + source[index + 1] +
+                          source[index - width - 2] + source[index + width + 2] -
+                          divergence[index])*0.25;
+}

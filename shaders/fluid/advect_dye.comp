@@ -1,0 +1,54 @@
+#version 430
+
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(std430, binding = 0) readonly buffer DyeSource
+{
+    float sourceDye[];
+};
+layout(std430, binding = 1) writeonly buffer DyeDestination
+{
+    float destinationDye[];
+};
+layout(std430, binding = 2) readonly buffer VelocityField
+{
+    vec2 velocity[];
+};
+
+uniform int width;
+uniform int height;
+uniform float timeStep;
+
+int cellIndex(ivec2 p)
+{
+    return p.y*(width + 2) + p.x;
+}
+
+float sampleDye(vec2 position)
+{
+    vec2 bounded = clamp(position, vec2(1.0), vec2(float(width), float(height)));
+    ivec2 low = ivec2(floor(bounded));
+    ivec2 high = min(low + ivec2(1), ivec2(width, height));
+    vec2 fraction = bounded - vec2(low);
+    float lower = mix(sourceDye[cellIndex(low)], sourceDye[cellIndex(ivec2(high.x, low.y))],
+                      fraction.x);
+    float upper = mix(sourceDye[cellIndex(ivec2(low.x, high.y))], sourceDye[cellIndex(high)],
+                      fraction.x);
+    return mix(lower, upper, fraction.y);
+}
+
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if ((p.x >= width + 2) || (p.y >= height + 2)) return;
+
+    int index = cellIndex(p);
+    if ((p.x == 0) || (p.x == width + 1) || (p.y == 0) || (p.y == height + 1))
+    {
+        ivec2 nearest = clamp(p, ivec2(1), ivec2(width, height));
+        destinationDye[index] = sourceDye[cellIndex(nearest)];
+        return;
+    }
+
+    vec2 backtrace = vec2(p) - timeStep*velocity[index];
+    destinationDye[index] = sampleDye(backtrace);
+}

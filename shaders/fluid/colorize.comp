@@ -1,0 +1,22 @@
+#version 430
+
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(std430, binding = 0) readonly buffer DyeField
+{
+    float dye[];
+};
+layout(rgba8, binding = 0) writeonly uniform image2D colorOutput;
+
+uniform int width;
+uniform int height;
+
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if ((p.x < 1) || (p.x > width) || (p.y < 1) || (p.y > height)) return;
+
+    float ink = 1.0 - exp(-0.35*max(dye[p.y*(width + 2) + p.x], 0.0));
+    vec3 background = vec3(0.018, 0.025, 0.035);
+    vec3 tint = vec3(0.10, 0.78, 0.92);
+    imageStore(colorOutput, p - ivec2(1), vec4(mix(background, tint, ink), 1.0));
+}

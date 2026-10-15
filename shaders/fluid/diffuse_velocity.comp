@@ -1,0 +1,47 @@
+#version 430
+
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(std430, binding = 0) readonly buffer SourceField
+{
+    vec2 source[];
+};
+layout(std430, binding = 1) writeonly buffer DestinationField
+{
+    vec2 destination[];
+};
+layout(std430, binding = 2) readonly buffer OriginalField
+{
+    vec2 original[];
+};
+
+uniform int width;
+uniform int height;
+uniform float alphaX;
+uniform float alphaY;
+
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if ((p.x >= width + 2) || (p.y >= height + 2)) return;
+
+    int index = p.y*(width + 2) + p.x;
+    bool ghostX = (p.x == 0) || (p.x == width + 1);
+    bool ghostY = (p.y == 0) || (p.y == height + 1);
+    if (ghostX || ghostY)
+    {
+        ivec2 nearest = clamp(p, ivec2(1), ivec2(width, height));
+        vec2 value = source[nearest.y*(width + 2) + nearest.x];
+        if (ghostX) value.x = -value.x;
+        if (ghostY) value.y = -value.y;
+        destination[index] = value;
+        return;
+    }
+
+    vec2 left = source[index - 1];
+    vec2 right = source[index + 1];
+    vec2 down = source[index - (width + 2)];
+    vec2 up = source[index + (width + 2)];
+    float denominator = 1.0 + 2.0*(alphaX + alphaY);
+    destination[index] = (original[index] + alphaX*(left + right) +
+                          alphaY*(down + up))/denominator;
+}
