@@ -28,6 +28,8 @@ Controls:
 
 - **Left-button drag** stirs the flow without adding dye.
 - **Right-button drag** deposits dye without changing velocity.
+- **Mouse wheel** adjusts the brush size from 1 to 64 grid cells (starts at
+  24); a brief gray outline shows the brush radius while adjusting.
 - **Space** pauses or resumes the simulation.
 - **C** clears all fields.
 
