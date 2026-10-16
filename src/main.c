@@ -47,6 +47,12 @@ static bool GetSimulationRectangle(int screenWidth, int screenHeight, Rectangle 
     return true;
 }
 
+static bool AddDyeTrailSource(Vector2 position, void *context)
+{
+    FluidSim *simulation = context;
+    return FluidSimAddDyeSource(simulation, position, DYE_SOURCE_AMOUNT, BRUSH_RADIUS);
+}
+
 int main(int argc, char **argv)
 {
     if ((argc > 1) && ((argc != 2) || (strcmp(argv[1], "--benchmark") != 0)))
@@ -59,6 +65,7 @@ int main(int argc, char **argv)
     int exitCode = 1;
     bool paused = false;
     bool hasPreviousMouse = false;
+    MouseGridTrail dyeTrail = {0};
     bool benchmarkWarmupComplete = !benchmarkMode;
     Vector2 previousMouse = {0};
     double benchmarkWarmupSeconds = 0.0;
@@ -167,17 +174,21 @@ int main(int argc, char **argv)
                 }
                 hasPreviousMouse = true;
             }
-            if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) &&
-                !FluidSimAddDyeSource(simulation, gridPosition, DYE_SOURCE_AMOUNT, BRUSH_RADIUS))
-            {
-                TraceLog(LOG_ERROR, "Could not apply the dye source.");
-                goto cleanup;
-            }
             previousMouse = mouse;
         }
         else if (!benchmarkMode)
         {
             hasPreviousMouse = false;
+        }
+        if (!benchmarkMode &&
+            !UpdateMouseGridTrail(&dyeTrail,
+                                  !paused && mouseInside &&
+                                      IsMouseButtonDown(MOUSE_BUTTON_RIGHT),
+                                  gridPosition, SIMULATION_SIZE, SIMULATION_SIZE,
+                                  BRUSH_RADIUS, AddDyeTrailSource, simulation))
+        {
+            TraceLog(LOG_ERROR, "Could not apply the dye trail source.");
+            goto cleanup;
         }
         if (!benchmarkMode && !IsMouseButtonDown(MOUSE_BUTTON_LEFT))
         {

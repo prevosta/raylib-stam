@@ -1,7 +1,25 @@
 #include "mouse_mapping.h"
 
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
+
+typedef struct TrailCapture
+{
+    Vector2 positions[16];
+    size_t count;
+} TrailCapture;
+
+static bool CaptureTrailPosition(Vector2 position, void *context)
+{
+    TrailCapture *capture = context;
+    if (capture->count == sizeof(capture->positions)/sizeof(capture->positions[0]))
+    {
+        return false;
+    }
+    capture->positions[capture->count++] = position;
+    return true;
+}
 
 int main(void)
 {
@@ -51,6 +69,58 @@ int main(void)
             fputs("Mouse coordinates outside the square viewport were accepted.\n", stderr);
             return 1;
         }
+    }
+
+    MouseGridTrail trail = {0};
+    TrailCapture capture = {0};
+    if (!UpdateMouseGridTrail(&trail, true, (Vector2){2.0f, 16.0f}, 32, 32, 8.0f,
+                              CaptureTrailPosition, &capture) ||
+        !UpdateMouseGridTrail(&trail, true, (Vector2){29.0f, 16.0f}, 32, 32, 8.0f,
+                              CaptureTrailPosition, &capture) ||
+        (capture.count <= 2))
+    {
+        fputs("A long mouse segment did not produce intermediate dye trail sources.\n", stderr);
+        return 1;
+    }
+    const size_t longStrokeSourceCount = capture.count;
+    if ((capture.positions[0].x != 2.0f) || (capture.positions[0].y != 16.0f) ||
+        (capture.positions[capture.count - 1].x != 29.0f) ||
+        (capture.positions[capture.count - 1].y != 16.0f))
+    {
+        fputs("A dye trail omitted one of its pointer sample positions.\n", stderr);
+        return 1;
+    }
+    for (size_t i = 0; i < capture.count; i++)
+    {
+        const Vector2 position = capture.positions[i];
+        if ((position.x < 0.0f) || (position.x >= 32.0f) ||
+            (position.y < 0.0f) || (position.y >= 32.0f))
+        {
+            fputs("A trail source escaped the active simulation grid.\n", stderr);
+            return 1;
+        }
+        if (i > 0)
+        {
+            const float dx = position.x - capture.positions[i - 1].x;
+            const float dy = position.y - capture.positions[i - 1].y;
+            if (sqrtf(dx*dx + dy*dy) > 8.0001f)
+            {
+                fputs("A long mouse segment contains an over-spaced trail gap.\n", stderr);
+                return 1;
+            }
+        }
+    }
+
+    if (!UpdateMouseGridTrail(&trail, false, (Vector2){0.0f, 0.0f}, 32, 32, 8.0f,
+                              CaptureTrailPosition, &capture) ||
+        !UpdateMouseGridTrail(&trail, true, (Vector2){31.0f, 31.0f}, 32, 32, 8.0f,
+                              CaptureTrailPosition, &capture) ||
+        (capture.count != longStrokeSourceCount + 1) ||
+        (capture.positions[capture.count - 1].x != 31.0f) ||
+        (capture.positions[capture.count - 1].y != 31.0f))
+    {
+        fputs("A mouse trail did not restart at the re-entry position.\n", stderr);
+        return 1;
     }
 
     puts("Mouse mapping preserves displayed orientation and rejects letterbox coordinates.");

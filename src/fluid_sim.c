@@ -692,13 +692,18 @@ bool FluidSimProjectVelocity(FluidSim *simulation)
     return (simulation != NULL) && ProjectVelocity(simulation);
 }
 
+static bool IsValidSourcePosition(const FluidSim *simulation, Vector2 position, float radius)
+{
+    return (simulation != NULL) && isfinite(position.x) && isfinite(position.y) &&
+           isfinite(radius) && (position.x >= 0.0f) && (position.y >= 0.0f) &&
+           (position.x < (float)simulation->width) &&
+           (position.y < (float)simulation->height) && (radius > 0.0f);
+}
+
 bool FluidSimAddVelocitySource(FluidSim *simulation, Vector2 position, Vector2 velocity, float radius)
 {
-    if ((simulation == NULL) || !isfinite(position.x) || !isfinite(position.y) ||
-        !isfinite(velocity.x) || !isfinite(velocity.y) || !isfinite(radius) ||
-        (position.x < 0.0f) || (position.y < 0.0f) ||
-        (position.x >= (float)simulation->width) ||
-        (position.y >= (float)simulation->height) || (radius <= 0.0f))
+    if (!IsValidSourcePosition(simulation, position, radius) ||
+        !isfinite(velocity.x) || !isfinite(velocity.y))
     {
         return false;
     }
@@ -707,10 +712,8 @@ bool FluidSimAddVelocitySource(FluidSim *simulation, Vector2 position, Vector2 v
 
 bool FluidSimAddDyeSource(FluidSim *simulation, Vector2 position, float amount, float radius)
 {
-    if ((simulation == NULL) || !isfinite(position.x) || !isfinite(position.y) ||
-        !isfinite(amount) || !isfinite(radius) || (position.x < 0.0f) ||
-        (position.y < 0.0f) || (position.x >= (float)simulation->width) ||
-        (position.y >= (float)simulation->height) || (amount < 0.0f) || (radius <= 0.0f))
+    if (!IsValidSourcePosition(simulation, position, radius) || !isfinite(amount) ||
+        (amount < 0.0f))
     {
         return false;
     }

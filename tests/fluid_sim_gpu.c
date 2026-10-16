@@ -1,4 +1,5 @@
 #include "fluid_sim.h"
+#include "mouse_mapping.h"
 #include "rlgl.h"
 #include "simulation_tuning.h"
 
@@ -26,6 +27,13 @@ static bool AllZero(const float *values, size_t count)
         }
     }
     return true;
+}
+
+static bool QueueDyeTrailSource(Vector2 position, void *context)
+{
+    FluidSim *simulation = context;
+    return FluidSimAddDyeSource(simulation, position, SIMULATION_DYE_SOURCE_AMOUNT,
+                                SIMULATION_BRUSH_RADIUS);
 }
 
 static bool AllFinite(const float *values, size_t count)
@@ -215,6 +223,23 @@ int main(void)
     CHECK(AllZero(velocity, velocityCount) && AllZero(dye, scalarCount),
           "An out-of-grid source changed a simulation field.");
     puts("Active-cell source bounds test passed.");
+
+    MouseGridTrail dyeTrail = {0};
+    CHECK(FluidSimClear(simulation) &&
+          UpdateMouseGridTrail(&dyeTrail, true, (Vector2){2.0f, 16.0f}, width, height,
+                               SIMULATION_BRUSH_RADIUS, QueueDyeTrailSource, simulation) &&
+          UpdateMouseGridTrail(&dyeTrail, true, (Vector2){29.0f, 16.0f}, width, height,
+                               SIMULATION_BRUSH_RADIUS, QueueDyeTrailSource, simulation) &&
+          FluidSimStep(simulation) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
+          FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount),
+          "Could not apply and read a long dye trail.");
+    const size_t middleDyeIndex = (size_t)17*(width + 2) + 17;
+    CHECK(AllZero(velocity, velocityCount),
+          "A dye-only trail changed the velocity field.");
+    CHECK(dye[middleDyeIndex] > 0.1f,
+          "A long dye trail did not deposit dye between its pointer samples.");
+    puts("Continuous dye trail and dye-only interaction test passed.");
 
     CHECK(FluidSimClear(simulation) &&
           FluidSimAddVelocitySource(simulation, (Vector2){15.5f, 15.5f},
