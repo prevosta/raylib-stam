@@ -64,6 +64,20 @@ they do not include a CPU solver reference. The GPU correctness checks use the
 same tuned iteration and viscosity values as the application. Full-resolution
 performance is measured separately with the rendered application.
 
+GitHub Actions builds the project and runs CTest tests labeled `cpu`. The GPU
+tests require an OpenGL 4.3 context and should be run on a GPU-capable machine.
+
+## Commit messages
+
+Commit subjects follow [the project format](docs/agents/commit-labels.md). To
+enable the local commit-msg hook once per clone, run:
+
+```powershell
+git config core.hooksPath .githooks
+```
+
+GitHub Actions also validates commit subjects on pushes and pull requests.
+
 ## Project layout
 
 - `src/main.c`: window, frame loop, input mapping, and presentation.

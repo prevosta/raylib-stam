@@ -54,3 +54,5 @@ set_tests_properties(compute_shader_smoke fluid_sim_gpu mouse_mapping performanc
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
 )
 set_tests_properties(performance_report PROPERTIES LABELS "cpu")
+set_tests_properties(compute_shader_smoke fluid_sim_gpu PROPERTIES LABELS "gpu")
+set_tests_properties(mouse_mapping performance_report PROPERTIES LABELS "cpu")
