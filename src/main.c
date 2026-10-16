@@ -115,7 +115,7 @@ int main(int argc, char **argv)
         .height = SIMULATION_SIZE,
         .solverIterations = SIMULATION_SOLVER_ITERATIONS,
         .viscosity = VELOCITY_VISCOSITY,
-        .shaderDirectory = "shaders/fluid"
+        .shaderDirectory = "shaders"
     };
     char errorMessage[512] = {0};
     simulation = FluidSimCreate(&config, errorMessage, sizeof(errorMessage));

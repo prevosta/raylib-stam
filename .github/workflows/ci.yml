@@ -16,23 +16,21 @@ jobs:
           fetch-depth: 0
 
       - name: Check commit subjects
-        shell: pwsh
+        shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if ($env:EVENT_NAME -eq "pull_request") {
-              $revisionRange = "$($env:PR_BASE_SHA)..$($env:PR_HEAD_SHA)"
-          }
-          elseif ($env:PUSH_BEFORE_SHA -match "^0+$") {
-              $revisionRange = $env:GITHUB_SHA
-          }
-          else {
-              $revisionRange = "$($env:PUSH_BEFORE_SHA)..$($env:GITHUB_SHA)"
-          }
-          & .\scripts\check-commit-messages.ps1 -RevisionRange $revisionRange
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+              revision_range="${PR_BASE_SHA}..${PR_HEAD_SHA}"
+          elif [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+              revision_range="$GITHUB_SHA"
+          else
+              revision_range="${PUSH_BEFORE_SHA}..${GITHUB_SHA}"
+          fi
+          sh .githooks/commit-msg --revision-range "$revision_range"
 
       - name: Configure
         run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release

@@ -181,7 +181,7 @@ int main(void)
         .height = height,
         .solverIterations = SIMULATION_SOLVER_ITERATIONS,
         .viscosity = SIMULATION_VISCOSITY,
-        .shaderDirectory = "shaders/fluid"
+        .shaderDirectory = "shaders"
     };
     simulation = FluidSimCreate(&config, errorMessage, sizeof(errorMessage));
     if (simulation == NULL)

@@ -1,7 +1,31 @@
 #!/bin/sh
 set -eu
 
-repository_root=$(git rev-parse --show-toplevel)
-exec powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass \
-    -File "$repository_root/scripts/check-commit-messages.ps1" \
-    -MessageFile "$1"
+if [ "$#" -eq 1 ] && [ -f "$1" ]; then
+    source=$1
+    subject=
+    IFS= read -r subject < "$source" || true
+    subjects=$subject
+elif [ "$#" -eq 2 ] && [ "$1" = "--revision-range" ]; then
+    source=$2
+    subjects=$(git log --no-merges --format=%s "$source")
+    if [ -z "$subjects" ] && [ "$(git rev-list --count --no-merges "$source")" -eq 0 ]; then
+        exit 0
+    fi
+else
+    printf 'Usage: %s <commit-message-file> | %s --revision-range <range>\n' "$0" "$0" >&2
+    exit 2
+fi
+
+printf '%s\n' "$subjects" | while IFS= read -r subject; do
+    case "$subject" in
+        'Merge branch '*|'Merge remote-tracking branch '*|'Merge pull request #'[0-9]*' from '*|\
+        'feat: '?*|'fix: '?*|'refactor: '?*|'docs: '?*|'test: '?*|'chore: '?*)
+            ;;
+        *)
+            printf 'Invalid commit subject in %s: %s\n' "$source" "$subject" >&2
+            printf "Expected '<label>: <short description>'; labels: feat, fix, refactor, docs, test, chore.\n" >&2
+            exit 1
+            ;;
+    esac
+done
