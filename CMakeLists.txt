@@ -53,3 +53,4 @@ add_test(NAME performance_report COMMAND performance_report_tests)
 set_tests_properties(compute_shader_smoke fluid_sim_gpu mouse_mapping performance_report PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
 )
+set_tests_properties(performance_report PROPERTIES LABELS "cpu")
