@@ -1,6 +1,8 @@
 #include "fluid_sim.h"
 #include "mouse_mapping.h"
+#include "performance_report.h"
 #include "rlgl.h"
+#include "simulation_tuning.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -20,14 +22,15 @@ __declspec(dllimport) const unsigned char *__stdcall glGetString(unsigned int na
 enum
 {
     SIMULATION_SIZE = 1024,
-    SOLVER_ITERATIONS = 20,
-    TARGET_FRAME_RATE = 60
+    TARGET_FRAME_RATE = 60,
+    BENCHMARK_WARMUP_SECONDS = 5,
+    BENCHMARK_SAMPLE_SECONDS = 10
 };
 
-static const float VELOCITY_VISCOSITY = 0.0001f;
-static const float BRUSH_RADIUS = 8.0f;
-static const float VELOCITY_SOURCE_GAIN = 0.45f;
-static const float DYE_SOURCE_AMOUNT = 2.0f;
+static const float VELOCITY_VISCOSITY = SIMULATION_VISCOSITY;
+static const float BRUSH_RADIUS = SIMULATION_BRUSH_RADIUS;
+static const float VELOCITY_SOURCE_GAIN = SIMULATION_VELOCITY_SOURCE_GAIN;
+static const float DYE_SOURCE_AMOUNT = SIMULATION_DYE_SOURCE_AMOUNT;
 static const Color BACKGROUND_COLOR = {5, 7, 9, 255};
 
 static bool GetSimulationRectangle(int screenWidth, int screenHeight, Rectangle *rectangle)
@@ -44,18 +47,26 @@ static bool GetSimulationRectangle(int screenWidth, int screenHeight, Rectangle 
     return true;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    if ((argc > 1) && ((argc != 2) || (strcmp(argv[1], "--benchmark") != 0)))
+    {
+        fputs("Usage: raylib_stam.exe [--benchmark]\n", stderr);
+        return 2;
+    }
+    const bool benchmarkMode = (argc == 2);
     FluidSim *simulation = NULL;
     int exitCode = 1;
     bool paused = false;
     bool hasPreviousMouse = false;
+    bool benchmarkWarmupComplete = !benchmarkMode;
     Vector2 previousMouse = {0};
+    double benchmarkWarmupSeconds = 0.0;
     double measuredSeconds = 0.0;
     unsigned int measuredFrames = 0;
 
     SetTraceLogLevel(LOG_INFO);
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | (benchmarkMode ? 0 : FLAG_VSYNC_HINT));
     InitWindow(1200, 900, "raylib-stam | 2D Stable Fluids");
     if (!IsWindowReady())
     {
@@ -78,7 +89,9 @@ int main(void)
              (vendorBytes != NULL) ? (const char *)vendorBytes : "unknown");
     TraceLog(LOG_INFO, "OpenGL version: %s",
              (versionBytes != NULL) ? (const char *)versionBytes : "unknown");
-    if (strstr(renderer, "RTX A2000") == NULL)
+    const char *vendor = (vendorBytes != NULL) ? (const char *)vendorBytes : NULL;
+    if (PerformanceReportEvaluate(renderer, vendor, PERFORMANCE_REPORT_TARGET_FPS) ==
+        PERFORMANCE_REPORT_NOT_TARGET_ADAPTER)
     {
         TraceLog(LOG_WARNING,
                  "The RTX A2000 target was not selected. The 1024x1024, 60 FPS full-solver target "
@@ -93,7 +106,7 @@ int main(void)
     const FluidSimConfig config = {
         .width = SIMULATION_SIZE,
         .height = SIMULATION_SIZE,
-        .solverIterations = SOLVER_ITERATIONS,
+        .solverIterations = SIMULATION_SOLVER_ITERATIONS,
         .viscosity = VELOCITY_VISCOSITY,
         .shaderDirectory = "shaders/fluid"
     };
@@ -106,15 +119,22 @@ int main(void)
         goto cleanup;
     }
 
-    SetTargetFPS(TARGET_FRAME_RATE);
+    SetTargetFPS(benchmarkMode ? 0 : TARGET_FRAME_RATE);
+    if (benchmarkMode)
+    {
+        TraceLog(LOG_INFO,
+                 "Full-solver benchmark: uncapped rendered loop; %d-second warm-up, then one "
+                 "%d-second sample with a fixed center velocity and dye source.",
+                 BENCHMARK_WARMUP_SECONDS, BENCHMARK_SAMPLE_SECONDS);
+    }
     while (!WindowShouldClose())
     {
-        if (IsKeyPressed(KEY_SPACE))
+        if (!benchmarkMode && IsKeyPressed(KEY_SPACE))
         {
             paused = !paused;
             hasPreviousMouse = false;
         }
-        if (IsKeyPressed(KEY_C) && !FluidSimClear(simulation))
+        if (!benchmarkMode && IsKeyPressed(KEY_C) && !FluidSimClear(simulation))
         {
             TraceLog(LOG_ERROR, "Could not clear the simulation fields.");
             goto cleanup;
@@ -127,7 +147,7 @@ int main(void)
                                                          &simulationRectangle) &&
                                  MapMouseToGrid(mouse, simulationRectangle, (float)SIMULATION_SIZE,
                                                 (float)SIMULATION_SIZE, &gridPosition);
-        if (!paused && mouseInside)
+        if (!benchmarkMode && !paused && mouseInside)
         {
             if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))
             {
@@ -155,15 +175,32 @@ int main(void)
             }
             previousMouse = mouse;
         }
-        else
+        else if (!benchmarkMode)
         {
             hasPreviousMouse = false;
         }
-        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+        if (!benchmarkMode && !IsMouseButtonDown(MOUSE_BUTTON_LEFT))
         {
             hasPreviousMouse = false;
         }
 
+        if (benchmarkMode)
+        {
+            const Vector2 sourcePosition = {
+                (float)SIMULATION_SIZE*0.5f,
+                (float)SIMULATION_SIZE*0.5f
+            };
+            const Vector2 sourceVelocity = {
+                VELOCITY_SOURCE_GAIN*(float)TARGET_FRAME_RATE,
+                0.0f
+            };
+            if (!FluidSimAddVelocitySource(simulation, sourcePosition, sourceVelocity, BRUSH_RADIUS) ||
+                !FluidSimAddDyeSource(simulation, sourcePosition, DYE_SOURCE_AMOUNT, BRUSH_RADIUS))
+            {
+                TraceLog(LOG_ERROR, "Could not apply benchmark sources.");
+                goto cleanup;
+            }
+        }
         if (!paused && !FluidSimStep(simulation))
         {
             TraceLog(LOG_ERROR, "The fluid simulation step failed.");
@@ -178,21 +215,52 @@ int main(void)
             const Rectangle source = {0.0f, 0.0f, (float)texture.width, -(float)texture.height};
             DrawTexturePro(texture, source, simulationRectangle, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
         }
-        DrawText("SPACE pause  C clear  Left drag stir  Right drag dye",
+        DrawText(benchmarkMode ? "BENCHMARK: fixed center sources, uncapped"
+                               : "SPACE pause  C clear  Left drag stir  Right drag dye",
                  12, 12, 18, RAYWHITE);
         DrawText(paused ? "PAUSED" : TextFormat("%d FPS", GetFPS()),
                  12, 36, 18, paused ? GOLD : RAYWHITE);
         EndDrawing();
 
-        measuredSeconds += GetFrameTime();
-        measuredFrames++;
-        if (measuredSeconds >= 5.0)
+        const double frameSeconds = GetFrameTime();
+        if (!benchmarkWarmupComplete)
         {
-            TraceLog(LOG_INFO, "Full-frame average: %.1f FPS (%.2f ms, %u frames)",
-                     (double)measuredFrames/measuredSeconds,
-                     1000.0*measuredSeconds/measuredFrames, measuredFrames);
-            measuredSeconds = 0.0;
-            measuredFrames = 0;
+            benchmarkWarmupSeconds += frameSeconds;
+            if (benchmarkWarmupSeconds >= BENCHMARK_WARMUP_SECONDS)
+            {
+                benchmarkWarmupComplete = true;
+            }
+        }
+        else
+        {
+            measuredSeconds += frameSeconds;
+            measuredFrames++;
+            const double sampleDuration = benchmarkMode ? BENCHMARK_SAMPLE_SECONDS : 5.0;
+            if (measuredSeconds >= sampleDuration)
+            {
+                const double averageFramesPerSecond = (double)measuredFrames/measuredSeconds;
+                const PerformanceReportStatus reportStatus =
+                    PerformanceReportEvaluate(renderer, vendor, averageFramesPerSecond);
+                TraceLog(LOG_INFO, "Full-rendered solver sample: %.3f FPS, %.3f ms/frame; %u frames "
+                                   "over %.3f s; acceptance=%s",
+                         averageFramesPerSecond, 1000.0*measuredSeconds/measuredFrames,
+                         measuredFrames, measuredSeconds, PerformanceReportStatusName(reportStatus));
+                TraceLog(LOG_INFO, "Configuration: grid=%ux%u, solverIterations=%u, viscosity=%.8g, "
+                                   "brushRadius=%.2f, velocitySourceGain=%.2f, dyeSourceAmount=%.2f",
+                         (unsigned int)SIMULATION_SIZE, (unsigned int)SIMULATION_SIZE,
+                         config.solverIterations, (double)config.viscosity, (double)BRUSH_RADIUS,
+                         (double)VELOCITY_SOURCE_GAIN, (double)DYE_SOURCE_AMOUNT);
+                TraceLog(LOG_INFO, "Renderer: %s; vendor: %s; OpenGL version/driver: %s",
+                         renderer, (vendor != NULL) ? vendor : "unknown",
+                         (versionBytes != NULL) ? (const char *)versionBytes : "unknown");
+                measuredSeconds = 0.0;
+                measuredFrames = 0;
+                if (benchmarkMode)
+                {
+                    exitCode = 0;
+                    goto cleanup;
+                }
+            }
         }
     }
 

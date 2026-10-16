@@ -36,10 +36,18 @@ necessary. At startup, it logs the selected OpenGL renderer and version, asks
 Windows to prefer the high-performance adapter, and warns if the RTX A2000
 target was not selected. The application shows its current FPS; the target is
 at least 60 FPS for the complete rendered 1024 x 1024 solver on an RTX A2000.
-It also logs five-second full-frame FPS averages. A reported renderer or a
-60 FPS cap alone is not performance validation.
+The normal run logs five-second full-frame averages. To run a reproducible,
+uncapped full-render benchmark, start it with `.\raylib_stam.exe --benchmark`
+from the build directory. It warms up for five seconds, then measures ten
+seconds while injecting fixed center velocity and dye sources. Each result
+includes frame time, solver and brush settings, renderer, vendor, OpenGL
+version/driver, and an acceptance status; only an RTX A2000 result at or above
+60 FPS qualifies. The benchmark includes solver passes, colorization,
+presentation, and the rendered frame loop; it is distinct from the
+compute-workload proxy.
 The solver advances once per rendered frame at a fixed 1/60-second step, and
 pause freezes field evolution without stopping rendering.
+See [the recorded full-solver measurements](docs/performance-validation.md).
 
 ## Checks
 
@@ -52,14 +60,16 @@ pause freezes field evolution without stopping rendering.
   dye advection, and clearing every simulation field.
 
 The solver tests use the actual compute shaders with limited field readback;
-they do not include a CPU solver reference. Full-resolution performance still
-needs to be measured on the RTX A2000 using the rendered application.
+they do not include a CPU solver reference. The GPU correctness checks use the
+same tuned iteration and viscosity values as the application. Full-resolution
+performance is measured separately with the rendered application.
 
 ## Project layout
 
 - `src/main.c`: window, frame loop, input mapping, and presentation.
 - `src/fluid_sim.h` and `src/fluid_sim.c`: public simulation seam and GPU
   resource/solver lifecycle.
+- `src/simulation_tuning.h`: shared solver and interaction tuning values.
 - `shaders/fluid/`: separate GLSL compute stages for the solver and
   visualization.
 - `tests/`: compute capability smoke check and small-grid GPU integration

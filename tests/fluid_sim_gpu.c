@@ -1,5 +1,6 @@
 #include "fluid_sim.h"
 #include "rlgl.h"
+#include "simulation_tuning.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -170,8 +171,8 @@ int main(void)
     const FluidSimConfig config = {
         .width = width,
         .height = height,
-        .solverIterations = 20,
-        .viscosity = 0.0001f,
+        .solverIterations = SIMULATION_SOLVER_ITERATIONS,
+        .viscosity = SIMULATION_VISCOSITY,
         .shaderDirectory = "shaders/fluid"
     };
     simulation = FluidSimCreate(&config, errorMessage, sizeof(errorMessage));
@@ -217,7 +218,8 @@ int main(void)
 
     CHECK(FluidSimClear(simulation) &&
           FluidSimAddVelocitySource(simulation, (Vector2){15.5f, 15.5f},
-                                   (Vector2){24.0f, -9.0f}, 3.0f) &&
+                                   (Vector2){SIMULATION_VELOCITY_SOURCE_GAIN*60.0f, -9.0f},
+                                   SIMULATION_BRUSH_RADIUS) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount),
           "Could not apply and read the velocity-only source.");
@@ -246,7 +248,8 @@ int main(void)
     }
     puts("Pressure-projection divergence-reduction test passed.");
 
-    CHECK(FluidSimAddDyeSource(simulation, (Vector2){15.5f, 15.5f}, 2.0f, 3.0f) &&
+    CHECK(FluidSimAddDyeSource(simulation, (Vector2){15.5f, 15.5f},
+                               SIMULATION_DYE_SOURCE_AMOUNT, 3.0f) &&
           FluidSimStep(simulation) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount) &&
@@ -284,7 +287,8 @@ int main(void)
           FluidSimAddVelocitySource(simulation, (Vector2){15.5f, 15.5f},
                                    (Vector2){24.0f, 8.0f}, 6.0f) &&
           FluidSimStep(simulation) &&
-          FluidSimAddDyeSource(simulation, (Vector2){17.5f, 15.5f}, 2.0f, 2.0f) &&
+          FluidSimAddDyeSource(simulation, (Vector2){17.5f, 15.5f},
+                               SIMULATION_DYE_SOURCE_AMOUNT, 2.0f) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount),
           "Could not prepare the deferred dye-source test.");
     CHECK(AllZero(dye, scalarCount),
@@ -302,7 +306,8 @@ int main(void)
     puts("Dye advection test passed.");
 
     CHECK(FluidSimClear(simulation) &&
-          FluidSimAddDyeSource(simulation, (Vector2){15.5f, 15.5f}, 2.0f, 3.0f) &&
+          FluidSimAddDyeSource(simulation, (Vector2){15.5f, 15.5f},
+                               SIMULATION_DYE_SOURCE_AMOUNT, 3.0f) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_VELOCITY, velocity, velocityCount) &&
           FluidSimReadField(simulation, FLUID_SIM_FIELD_DYE, dye, scalarCount),
           "Could not apply and read the dye-only source.");
